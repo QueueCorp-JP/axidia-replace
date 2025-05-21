@@ -159,47 +159,72 @@ const BannerEditor: React.FC = () => {
   
   // キャンバス初期化関数
   const initializeCanvas = (): boolean => {
-    if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
-      return true;
-    }
-    
-    if (canvasRef.current && !fabricCanvasRef.current) {
-      try {
-        const canvas = new fabric.Canvas(canvasRef.current, {
-          preserveObjectStacking: true,
-          selection: false,
-          width: 800,
-          height: 600
-        });
-        fabricCanvasRef.current = canvas;
-
-        // オブジェクト選択時のイベント
-        canvas.on('selection:created', (e) => {
-          if (e.selected && e.selected.length > 0) {
-            const selectedObject = e.selected[0];
-            setState(prev => ({ ...prev, activeBanner: selectedObject }));
-          }
-        });
-
-        canvas.on('selection:updated', (e) => {
-          if (e.selected && e.selected.length > 0) {
-            const selectedObject = e.selected[0];
-            setState(prev => ({ ...prev, activeBanner: selectedObject }));
-          }
-        });
-
-        canvas.on('selection:cleared', () => {
-          setState(prev => ({ ...prev, activeBanner: null }));
-        });
-        
+    try {
+      // If canvas is already initialized and valid, return true
+      if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
         return true;
-      } catch (error) {
-        console.error('Fabric canvas initialization error:', error);
-        return false;
       }
+      
+      // If there's an invalid canvas reference, clean it up first
+      if (fabricCanvasRef.current && !fabricCanvasRef.current.getContext()) {
+        try {
+          fabricCanvasRef.current.dispose();
+        } catch (e) {
+          console.warn('Error disposing invalid canvas:', e);
+        }
+        fabricCanvasRef.current = null;
+      }
+      
+      // Initialize new canvas if we have a valid canvas element
+      if (canvasRef.current) {
+        try {
+          // Make sure any previous canvas instance is properly cleaned up
+          const existingCanvas = document.querySelector('canvas.upper-canvas');
+          if (existingCanvas && existingCanvas.parentNode) {
+            existingCanvas.parentNode.removeChild(existingCanvas);
+          }
+          
+          // Create a new fabric canvas
+          const canvas = new fabric.Canvas(canvasRef.current, {
+            preserveObjectStacking: true,
+            selection: false,
+            width: 800,
+            height: 600
+          });
+          
+          fabricCanvasRef.current = canvas;
+
+          // オブジェクト選択時のイベント
+          canvas.on('selection:created', (e) => {
+            if (e.selected && e.selected.length > 0) {
+              const selectedObject = e.selected[0];
+              setState(prev => ({ ...prev, activeBanner: selectedObject }));
+            }
+          });
+
+          canvas.on('selection:updated', (e) => {
+            if (e.selected && e.selected.length > 0) {
+              const selectedObject = e.selected[0];
+              setState(prev => ({ ...prev, activeBanner: selectedObject }));
+            }
+          });
+
+          canvas.on('selection:cleared', () => {
+            setState(prev => ({ ...prev, activeBanner: null }));
+          });
+          
+          return true;
+        } catch (error) {
+          console.error('Fabric canvas initialization error:', error);
+          return false;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Unexpected error during canvas initialization:', error);
+      return false;
     }
-    
-    return false;
   };
 
   // ファイル処理関数
@@ -267,46 +292,58 @@ const BannerEditor: React.FC = () => {
       }, 10000);
       
       reader.onload = (e) => {
-        if (e.target?.result && fabricCanvasRef.current) {
+        // Create a new image element to load the file
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = () => {
           try {
-            // Double-check that canvas is still initialized
-            if (!fabricCanvasRef.current.getContext()) {
+            // Re-check canvas initialization after image loads
+            if (!initializeCanvas()) {
+              clearTimeout(loadingTimeout);
+              document.getElementById('image-loading-indicator')?.remove();
+              reject(new Error('キャンバスの初期化に失敗しました'));
+              return;
+            }
+            
+            if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
               clearTimeout(loadingTimeout);
               document.getElementById('image-loading-indicator')?.remove();
               reject(new Error('キャンバスのコンテキストが失われました'));
               return;
             }
             
-            fabric.Image.fromURL(e.target.result.toString(), (img: FabricImage) => {
-              try {
-                // 読み込み中の表示を削除
-                clearTimeout(loadingTimeout);
-                document.getElementById('image-loading-indicator')?.remove();
-                
-                // Final check before manipulating canvas
-                if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
-                  resizeCanvasToFitImage(img);
-                  fabricCanvasRef.current.add(img);
-                  fabricCanvasRef.current.renderAll();
-                  resolve();
-                } else {
-                  reject(new Error('ファブリックキャンバスが初期化されていません'));
-                }
-              } catch (imgError) {
-                console.error('Image processing error:', imgError);
-                clearTimeout(loadingTimeout);
-                document.getElementById('image-loading-indicator')?.remove();
-                reject(imgError);
-              }
-            }, { crossOrigin: 'anonymous' });
-          } catch (error) {
-            console.error('Fabric.js error:', error);
+            // Create fabric image directly from the loaded HTML image
+            const fabricImage = new fabric.Image(img);
+            
+            // 読み込み中の表示を削除
             clearTimeout(loadingTimeout);
             document.getElementById('image-loading-indicator')?.remove();
-            reject(error);
+            
+            // Resize canvas and add image
+            resizeCanvasToFitImage(fabricImage);
+            fabricCanvasRef.current.add(fabricImage);
+            fabricCanvasRef.current.renderAll();
+            resolve();
+          } catch (imgError) {
+            console.error('Image processing error:', imgError);
+            clearTimeout(loadingTimeout);
+            document.getElementById('image-loading-indicator')?.remove();
+            reject(imgError);
           }
+        };
+        
+        img.onerror = (imgError) => {
+          console.error('Image loading error:', imgError);
+          clearTimeout(loadingTimeout);
+          document.getElementById('image-loading-indicator')?.remove();
+          reject(new Error('画像の読み込みに失敗しました'));
+        };
+        
+        // Set image source from FileReader result
+        if (e.target?.result) {
+          img.src = e.target.result.toString();
         } else {
-          // 読み込み結果がない場合もローディングを削除
           clearTimeout(loadingTimeout);
           document.getElementById('image-loading-indicator')?.remove();
           reject(new Error('画像の読み込みに失敗しました'));
@@ -391,8 +428,16 @@ const BannerEditor: React.FC = () => {
   const renderPdfPage = async (pageNumber: number) => {
     try {
       const { pdfDocument } = state;
-      if (!pdfDocument || !fabricCanvasRef.current) return;
-      if (!fabricCanvasRef.current.getContext()) return;
+      if (!pdfDocument) {
+        alert('PDFドキュメントが読み込まれていません。');
+        return;
+      }
+      
+      // Ensure canvas is initialized
+      if (!initializeCanvas()) {
+        alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+        return;
+      }
 
       // ページ切り替え中の表示
       const loadingElement = document.createElement('div');
@@ -416,9 +461,17 @@ const BannerEditor: React.FC = () => {
       const viewport = page.getViewport({ scale: 1.5 });
       
       // Check if canvas is still valid
+      if (!initializeCanvas()) {
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+        return;
+      }
+      
       if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
         clearTimeout(loadingTimeout);
         document.getElementById('page-loading-indicator')?.remove();
+        alert('キャンバスのコンテキストが失われました。ページをリロードしてください。');
         return;
       }
       
@@ -430,31 +483,60 @@ const BannerEditor: React.FC = () => {
       const renderedCanvas = await renderPageToCanvas(page, 1.5);
       
       // Check again if canvas is still valid
+      if (!initializeCanvas()) {
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+        return;
+      }
+      
       if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
         clearTimeout(loadingTimeout);
         document.getElementById('page-loading-indicator')?.remove();
+        alert('キャンバスのコンテキストが失われました。ページをリロードしてください。');
         return;
       }
       
       // キャンバスをクリア（サイズはリセットしない）
-      resetCanvas(false);
+      try {
+        resetCanvas(false);
+      } catch (error) {
+        console.error('Error resetting canvas:', error);
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        alert('キャンバスのリセットに失敗しました。ページをリロードしてください。');
+        return;
+      }
       
-      // レンダリングされたページをキャンバスの背景にセット
-      fabric.Image.fromURL(renderedCanvas.toDataURL(), (img: FabricImage) => {
+      // Create an image element from the rendered canvas
+      const img = new Image();
+      img.onload = () => {
         try {
-          if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+          // Final check before setting background
+          if (!initializeCanvas()) {
             clearTimeout(loadingTimeout);
             document.getElementById('page-loading-indicator')?.remove();
+            alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
             return;
           }
           
+          if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+            clearTimeout(loadingTimeout);
+            document.getElementById('page-loading-indicator')?.remove();
+            alert('キャンバスのコンテキストが失われました。ページをリロードしてください。');
+            return;
+          }
+          
+          // Create fabric image directly from the loaded HTML image
+          const fabricImage = new fabric.Image(img);
+          
           // 背景画像として設定
           fabricCanvasRef.current.setBackgroundImage(
-            img, 
+            fabricImage, 
             fabricCanvasRef.current.renderAll.bind(fabricCanvasRef.current), 
             {
-              scaleX: fabricCanvasRef.current.width! / img.width!,
-              scaleY: fabricCanvasRef.current.height! / img.height!,
+              scaleX: fabricCanvasRef.current.width! / fabricImage.width!,
+              scaleY: fabricCanvasRef.current.height! / fabricImage.height!,
               selectable: false,
               evented: false
             }
@@ -463,15 +545,26 @@ const BannerEditor: React.FC = () => {
           // ローディングインジケータを削除
           clearTimeout(loadingTimeout);
           document.getElementById('page-loading-indicator')?.remove();
+          
+          // 現在のページ番号を更新
+          setState(prev => ({ ...prev, currentPage: pageNumber }));
         } catch (error) {
           console.error('Error setting PDF background:', error);
           clearTimeout(loadingTimeout);
           document.getElementById('page-loading-indicator')?.remove();
+          alert('PDFの表示に失敗しました。別のPDFを試してください。');
         }
-      });
+      };
       
-      // 現在のページ番号を更新
-      setState(prev => ({ ...prev, currentPage: pageNumber }));
+      img.onerror = () => {
+        console.error('Error loading PDF image');
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        alert('PDFの表示に失敗しました。別のPDFを試してください。');
+      };
+      
+      // Set image source from the rendered canvas
+      img.src = renderedCanvas.toDataURL();
     } catch (error) {
       // エラー時もローディングインジケータを削除
       console.error('PDFページのレンダリング中にエラーが発生しました:', error);
