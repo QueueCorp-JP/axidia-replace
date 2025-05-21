@@ -142,6 +142,27 @@ const BannerEditor: React.FC = () => {
 
   // Fabric.js キャンバスの初期化
   useEffect(() => {
+    initializeCanvas();
+    
+    return () => {
+      // Make sure to clean up the canvas when the component unmounts
+      try {
+        if (fabricCanvasRef.current) {
+          fabricCanvasRef.current.dispose();
+          fabricCanvasRef.current = null;
+        }
+      } catch (error) {
+        console.error('Error during canvas cleanup:', error);
+      }
+    };
+  }, []);
+  
+  // キャンバス初期化関数
+  const initializeCanvas = (): boolean => {
+    if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
+      return true;
+    }
+    
     if (canvasRef.current && !fabricCanvasRef.current) {
       try {
         const canvas = new fabric.Canvas(canvasRef.current, {
@@ -170,23 +191,16 @@ const BannerEditor: React.FC = () => {
         canvas.on('selection:cleared', () => {
           setState(prev => ({ ...prev, activeBanner: null }));
         });
+        
+        return true;
       } catch (error) {
         console.error('Fabric canvas initialization error:', error);
+        return false;
       }
     }
-
-    return () => {
-      // Make sure to clean up the canvas when the component unmounts
-      try {
-        if (fabricCanvasRef.current) {
-          fabricCanvasRef.current.dispose();
-          fabricCanvasRef.current = null;
-        }
-      } catch (error) {
-        console.error('Error during canvas cleanup:', error);
-      }
-    };
-  }, []);
+    
+    return false;
+  };
 
   // ファイル処理関数
   const handleFileUpload = async (file: File) => {
@@ -197,6 +211,12 @@ const BannerEditor: React.FC = () => {
       // Clear the PDF cache when loading a new file
       if (state.pdfDocument) {
         clearPdfCache(`doc_${state.currentFile?.name || 'current'}`);
+      }
+      
+      // Ensure canvas is initialized
+      if (!initializeCanvas()) {
+        alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+        return;
       }
       
       resetCanvas();
@@ -220,6 +240,13 @@ const BannerEditor: React.FC = () => {
   // 画像ファイル処理 - Promiseを返すように修正
   const processImageFile = (file: File): Promise<void> => {
     return new Promise((resolve, reject) => {
+      // Ensure canvas is initialized
+      if (!initializeCanvas()) {
+        alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+        reject(new Error('キャンバスの初期化に失敗しました'));
+        return;
+      }
+      
       const reader = new FileReader();
       
       // 読み込み中の表示
@@ -242,12 +269,21 @@ const BannerEditor: React.FC = () => {
       reader.onload = (e) => {
         if (e.target?.result && fabricCanvasRef.current) {
           try {
+            // Double-check that canvas is still initialized
+            if (!fabricCanvasRef.current.getContext()) {
+              clearTimeout(loadingTimeout);
+              document.getElementById('image-loading-indicator')?.remove();
+              reject(new Error('キャンバスのコンテキストが失われました'));
+              return;
+            }
+            
             fabric.Image.fromURL(e.target.result.toString(), (img: FabricImage) => {
               try {
                 // 読み込み中の表示を削除
                 clearTimeout(loadingTimeout);
                 document.getElementById('image-loading-indicator')?.remove();
                 
+                // Final check before manipulating canvas
                 if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
                   resizeCanvasToFitImage(img);
                   fabricCanvasRef.current.add(img);
@@ -290,6 +326,12 @@ const BannerEditor: React.FC = () => {
 
   // PDFファイル処理
   const processPdfFile = async (file: File) => {
+    // Ensure canvas is initialized
+    if (!initializeCanvas()) {
+      alert('キャンバスの初期化に失敗しました。ページをリロードしてください。');
+      return;
+    }
+
     // 読み込み中の表示
     const loadingElement = document.createElement('div');
     loadingElement.className = 'loading-indicator';
@@ -308,6 +350,14 @@ const BannerEditor: React.FC = () => {
     }, 15000);
     
     try {
+      // Double-check that canvas is still initialized
+      if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+        clearTimeout(loadingTimeout);
+        document.getElementById('pdf-loading-indicator')?.remove();
+        alert('キャンバスのコンテキストが失われました。ページをリロードしてください。');
+        return;
+      }
+      
       // ArrayBufferに変換
       const arrayBuffer = await file.arrayBuffer();
       
