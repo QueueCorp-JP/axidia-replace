@@ -23,7 +23,6 @@ const disableServiceWorkers = () => {
     });
     
     // Prevent future service worker registration attempts
-    const originalRegister = navigator.serviceWorker.register;
     navigator.serviceWorker.register = function() {
       console.warn('Service worker registration prevented');
       return Promise.reject(new Error('Service worker registration prevented'));
