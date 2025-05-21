@@ -1,4 +1,4 @@
-import { Canvas, Image, Object as FabricObject } from 'fabric/fabric-impl';
+import { Object as FabricObject } from 'fabric/fabric-impl';
 import { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
 
 export interface CustomBanner {
