@@ -37,71 +37,77 @@ const BannerEditor: React.FC = () => {
 
   // Resizes the canvas properly to maximize the available space in fullscreen mode
   const resizeCanvasInFullScreenMode = (isFullScreen: boolean) => {
-    if (!fabricCanvasRef.current || !canvasContainerRef.current) return;
-    
-    const canvas = fabricCanvasRef.current;
-    const container = canvasContainerRef.current;
-    
-    // Get the current canvas dimensions
-    const currentWidth = canvas.width || 800;
-    const currentHeight = canvas.height || 600;
-    const aspectRatio = currentWidth / currentHeight;
-    
-    if (isFullScreen) {
-      // In fullscreen mode, get the available size while respecting the aspect ratio
-      const containerWidth = container.clientWidth - 40; // Subtract padding/margin
-      const containerHeight = container.clientHeight - 40; // Subtract padding/margin
+    try {
+      if (!fabricCanvasRef.current || !canvasContainerRef.current) return;
+      if (!fabricCanvasRef.current.getContext()) return;
       
-      let newWidth, newHeight;
+      const canvas = fabricCanvasRef.current;
+      const container = canvasContainerRef.current;
       
-      // Determine if width or height is the limiting factor
-      if (containerWidth / aspectRatio <= containerHeight) {
-        // Width is limiting
-        newWidth = containerWidth;
-        newHeight = containerWidth / aspectRatio;
-      } else {
-        // Height is limiting
-        newHeight = containerHeight;
-        newWidth = containerHeight * aspectRatio;
+      // Get the current canvas dimensions
+      const currentWidth = canvas.width || 800;
+      const currentHeight = canvas.height || 600;
+      const aspectRatio = currentWidth / currentHeight;
+      
+      if (isFullScreen) {
+        // In fullscreen mode, get the available size while respecting the aspect ratio
+        const containerWidth = container.clientWidth - 40; // Subtract padding/margin
+        const containerHeight = container.clientHeight - 40; // Subtract padding/margin
+        
+        let newWidth, newHeight;
+        
+        // Determine if width or height is the limiting factor
+        if (containerWidth / aspectRatio <= containerHeight) {
+          // Width is limiting
+          newWidth = containerWidth;
+          newHeight = containerWidth / aspectRatio;
+        } else {
+          // Height is limiting
+          newHeight = containerHeight;
+          newWidth = containerHeight * aspectRatio;
+        }
+        
+        // Apply the new dimensions
+        canvas.setWidth(newWidth);
+        canvas.setHeight(newHeight);
+        
+        // Scale all objects proportionally to the new size
+        const scaleX = newWidth / currentWidth;
+        const scaleY = newHeight / currentHeight;
+        
+        canvas.getObjects().forEach(obj => {
+          if (obj) {
+            const currentScaleX = obj.scaleX || 1;
+            const currentScaleY = obj.scaleY || 1;
+            obj.set({
+              scaleX: currentScaleX * scaleX,
+              scaleY: currentScaleY * scaleY,
+              left: (obj.left || 0) * scaleX,
+              top: (obj.top || 0) * scaleY
+            });
+            obj.setCoords();
+          }
+        });
+        
+        // Also scale background image if it exists
+        const backgroundImage = canvas.backgroundImage;
+        if (backgroundImage) {
+          const bgScaleX = (backgroundImage as any).scaleX || 1;
+          const bgScaleY = (backgroundImage as any).scaleY || 1;
+          (backgroundImage as any).set({
+            scaleX: bgScaleX * scaleX,
+            scaleY: bgScaleY * scaleY
+          });
+        }
       }
       
-      // Apply the new dimensions
-      canvas.setWidth(newWidth);
-      canvas.setHeight(newHeight);
-      
-      // Scale all objects proportionally to the new size
-      const scaleX = newWidth / currentWidth;
-      const scaleY = newHeight / currentHeight;
-      
-      canvas.getObjects().forEach(obj => {
-        const currentScaleX = obj.scaleX || 1;
-        const currentScaleY = obj.scaleY || 1;
-        obj.set({
-          scaleX: currentScaleX * scaleX,
-          scaleY: currentScaleY * scaleY,
-          left: (obj.left || 0) * scaleX,
-          top: (obj.top || 0) * scaleY
-        });
-        obj.setCoords();
-      });
-      
-      // Also scale background image if it exists
-      const backgroundImage = canvas.backgroundImage;
-      if (backgroundImage) {
-        const bgScaleX = (backgroundImage as any).scaleX || 1;
-        const bgScaleY = (backgroundImage as any).scaleY || 1;
-        (backgroundImage as any).set({
-          scaleX: bgScaleX * scaleX,
-          scaleY: bgScaleY * scaleY
-        });
+      // Make sure canvas is still valid before rendering
+      if (canvas.getContext()) {
+        canvas.renderAll();
       }
-    } else {
-      // When exiting fullscreen, restore the original size if needed
-      // This might depend on whether you want to keep the scaled version or go back to original
-      // For now, just render the canvas to update all objects
+    } catch (error) {
+      console.error('Error resizing canvas:', error);
     }
-    
-    canvas.renderAll();
   };
 
   // ESCキーで全画面モード解除
@@ -137,38 +143,47 @@ const BannerEditor: React.FC = () => {
   // Fabric.js キャンバスの初期化
   useEffect(() => {
     if (canvasRef.current && !fabricCanvasRef.current) {
-      const canvas = new fabric.Canvas(canvasRef.current, {
-        preserveObjectStacking: true,
-        selection: false,
-        width: 800,
-        height: 600
-      });
-      fabricCanvasRef.current = canvas;
+      try {
+        const canvas = new fabric.Canvas(canvasRef.current, {
+          preserveObjectStacking: true,
+          selection: false,
+          width: 800,
+          height: 600
+        });
+        fabricCanvasRef.current = canvas;
 
-      // オブジェクト選択時のイベント
-      canvas.on('selection:created', (e) => {
-        if (e.selected && e.selected.length > 0) {
-          const selectedObject = e.selected[0];
-          setState(prev => ({ ...prev, activeBanner: selectedObject }));
-        }
-      });
+        // オブジェクト選択時のイベント
+        canvas.on('selection:created', (e) => {
+          if (e.selected && e.selected.length > 0) {
+            const selectedObject = e.selected[0];
+            setState(prev => ({ ...prev, activeBanner: selectedObject }));
+          }
+        });
 
-      canvas.on('selection:updated', (e) => {
-        if (e.selected && e.selected.length > 0) {
-          const selectedObject = e.selected[0];
-          setState(prev => ({ ...prev, activeBanner: selectedObject }));
-        }
-      });
+        canvas.on('selection:updated', (e) => {
+          if (e.selected && e.selected.length > 0) {
+            const selectedObject = e.selected[0];
+            setState(prev => ({ ...prev, activeBanner: selectedObject }));
+          }
+        });
 
-      canvas.on('selection:cleared', () => {
-        setState(prev => ({ ...prev, activeBanner: null }));
-      });
+        canvas.on('selection:cleared', () => {
+          setState(prev => ({ ...prev, activeBanner: null }));
+        });
+      } catch (error) {
+        console.error('Fabric canvas initialization error:', error);
+      }
     }
 
     return () => {
-      if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.dispose();
-        fabricCanvasRef.current = null;
+      // Make sure to clean up the canvas when the component unmounts
+      try {
+        if (fabricCanvasRef.current) {
+          fabricCanvasRef.current.dispose();
+          fabricCanvasRef.current = null;
+        }
+      } catch (error) {
+        console.error('Error during canvas cleanup:', error);
       }
     };
   }, []);
@@ -226,16 +241,34 @@ const BannerEditor: React.FC = () => {
       
       reader.onload = (e) => {
         if (e.target?.result && fabricCanvasRef.current) {
-          fabric.Image.fromURL(e.target.result.toString(), (img: FabricImage) => {
-            // 読み込み中の表示を削除
+          try {
+            fabric.Image.fromURL(e.target.result.toString(), (img: FabricImage) => {
+              try {
+                // 読み込み中の表示を削除
+                clearTimeout(loadingTimeout);
+                document.getElementById('image-loading-indicator')?.remove();
+                
+                if (fabricCanvasRef.current && fabricCanvasRef.current.getContext()) {
+                  resizeCanvasToFitImage(img);
+                  fabricCanvasRef.current.add(img);
+                  fabricCanvasRef.current.renderAll();
+                  resolve();
+                } else {
+                  reject(new Error('ファブリックキャンバスが初期化されていません'));
+                }
+              } catch (imgError) {
+                console.error('Image processing error:', imgError);
+                clearTimeout(loadingTimeout);
+                document.getElementById('image-loading-indicator')?.remove();
+                reject(imgError);
+              }
+            }, { crossOrigin: 'anonymous' });
+          } catch (error) {
+            console.error('Fabric.js error:', error);
             clearTimeout(loadingTimeout);
             document.getElementById('image-loading-indicator')?.remove();
-            
-            resizeCanvasToFitImage(img);
-            fabricCanvasRef.current?.add(img);
-            fabricCanvasRef.current?.renderAll();
-            resolve();
-          }, { crossOrigin: 'anonymous' });
+            reject(error);
+          }
         } else {
           // 読み込み結果がない場合もローディングを削除
           clearTimeout(loadingTimeout);
@@ -244,7 +277,8 @@ const BannerEditor: React.FC = () => {
         }
       };
       
-      reader.onerror = () => {
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error);
         clearTimeout(loadingTimeout);
         document.getElementById('image-loading-indicator')?.remove();
         reject(new Error('画像の読み込みに失敗しました'));
@@ -305,30 +339,38 @@ const BannerEditor: React.FC = () => {
 
   // PDFページレンダリング
   const renderPdfPage = async (pageNumber: number) => {
-    const { pdfDocument } = state;
-    if (!pdfDocument || !fabricCanvasRef.current) return;
-
-    // ページ切り替え中の表示
-    const loadingElement = document.createElement('div');
-    loadingElement.className = 'loading-indicator';
-    loadingElement.id = 'page-loading-indicator';
-    loadingElement.innerHTML = '<div class="spinner"></div><p>ページを読み込み中...</p>';
-    
-    // 既存のローディングインジケータがあれば削除
-    document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
-    
-    const canvasWrapper = document.querySelector('.canvas-wrapper');
-    canvasWrapper?.appendChild(loadingElement);
-    
-    // 安全対策: 10秒後に自動的にローディングインジケータを削除
-    const loadingTimeout = setTimeout(() => {
-      document.getElementById('page-loading-indicator')?.remove();
-    }, 10000);
-
     try {
+      const { pdfDocument } = state;
+      if (!pdfDocument || !fabricCanvasRef.current) return;
+      if (!fabricCanvasRef.current.getContext()) return;
+
+      // ページ切り替え中の表示
+      const loadingElement = document.createElement('div');
+      loadingElement.className = 'loading-indicator';
+      loadingElement.id = 'page-loading-indicator';
+      loadingElement.innerHTML = '<div class="spinner"></div><p>ページを読み込み中...</p>';
+      
+      // 既存のローディングインジケータがあれば削除
+      document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
+      
+      const canvasWrapper = document.querySelector('.canvas-wrapper');
+      canvasWrapper?.appendChild(loadingElement);
+      
+      // 安全対策: 10秒後に自動的にローディングインジケータを削除
+      const loadingTimeout = setTimeout(() => {
+        document.getElementById('page-loading-indicator')?.remove();
+      }, 10000);
+
       // PDFのページを取得
       const page = await pdfDocument.getPage(pageNumber);
       const viewport = page.getViewport({ scale: 1.5 });
+      
+      // Check if canvas is still valid
+      if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        return;
+      }
       
       // キャンバスサイズを設定
       fabricCanvasRef.current.setWidth(viewport.width);
@@ -337,37 +379,53 @@ const BannerEditor: React.FC = () => {
       // ページをレンダリング
       const renderedCanvas = await renderPageToCanvas(page, 1.5);
       
+      // Check again if canvas is still valid
+      if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+        clearTimeout(loadingTimeout);
+        document.getElementById('page-loading-indicator')?.remove();
+        return;
+      }
+      
       // キャンバスをクリア（サイズはリセットしない）
       resetCanvas(false);
       
       // レンダリングされたページをキャンバスの背景にセット
       fabric.Image.fromURL(renderedCanvas.toDataURL(), (img: FabricImage) => {
-        if (!fabricCanvasRef.current) return;
-        
-        // 背景画像として設定
-        fabricCanvasRef.current.setBackgroundImage(
-          img, 
-          fabricCanvasRef.current.renderAll.bind(fabricCanvasRef.current), 
-          {
-            scaleX: fabricCanvasRef.current.width! / img.width!,
-            scaleY: fabricCanvasRef.current.height! / img.height!,
-            selectable: false,
-            evented: false
+        try {
+          if (!fabricCanvasRef.current || !fabricCanvasRef.current.getContext()) {
+            clearTimeout(loadingTimeout);
+            document.getElementById('page-loading-indicator')?.remove();
+            return;
           }
-        );
-        
-        // ローディングインジケータを削除
-        clearTimeout(loadingTimeout);
-        document.getElementById('page-loading-indicator')?.remove();
+          
+          // 背景画像として設定
+          fabricCanvasRef.current.setBackgroundImage(
+            img, 
+            fabricCanvasRef.current.renderAll.bind(fabricCanvasRef.current), 
+            {
+              scaleX: fabricCanvasRef.current.width! / img.width!,
+              scaleY: fabricCanvasRef.current.height! / img.height!,
+              selectable: false,
+              evented: false
+            }
+          );
+          
+          // ローディングインジケータを削除
+          clearTimeout(loadingTimeout);
+          document.getElementById('page-loading-indicator')?.remove();
+        } catch (error) {
+          console.error('Error setting PDF background:', error);
+          clearTimeout(loadingTimeout);
+          document.getElementById('page-loading-indicator')?.remove();
+        }
       });
       
       // 現在のページ番号を更新
       setState(prev => ({ ...prev, currentPage: pageNumber }));
     } catch (error) {
       // エラー時もローディングインジケータを削除
-      clearTimeout(loadingTimeout);
-      document.getElementById('page-loading-indicator')?.remove();
       console.error('PDFページのレンダリング中にエラーが発生しました:', error);
+      document.getElementById('page-loading-indicator')?.remove();
       alert('PDFページのレンダリングに失敗しました。別のPDFを試してください。');
     }
   };
@@ -392,19 +450,26 @@ const BannerEditor: React.FC = () => {
 
   // キャンバスをリセット
   const resetCanvas = (resetSize = true) => {
-    if (!fabricCanvasRef.current) return;
-    
-    // 念のため、すべてのローディングインジケータを削除
-    document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
-    
-    fabricCanvasRef.current.clear();
-    
-    if (resetSize) {
-      fabricCanvasRef.current.setWidth(800);
-      fabricCanvasRef.current.setHeight(600);
+    try {
+      if (!fabricCanvasRef.current) return;
+      
+      // 念のため、すべてのローディングインジケータを削除
+      document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
+      
+      // Guard against null canvas context
+      if (fabricCanvasRef.current.getContext()) {
+        fabricCanvasRef.current.clear();
+        
+        if (resetSize) {
+          fabricCanvasRef.current.setWidth(800);
+          fabricCanvasRef.current.setHeight(600);
+        }
+        
+        fabricCanvasRef.current.renderAll();
+      }
+    } catch (error) {
+      console.error('Error resetting canvas:', error);
     }
-    
-    fabricCanvasRef.current.renderAll();
   };
 
   // バナー画像処理
