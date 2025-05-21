@@ -82,21 +82,15 @@ h2 {
 
 .upload-container input[type="file"] {
   position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  opacity: 0;
-  cursor: pointer !important;
-  z-index: 10; /* Ensure the input is on top of other elements */
-  pointer-events: auto; /* Make sure it can receive click events */
-  font-size: 0; /* Fix for some browsers */
-  border: none;
-  outline: none;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
   padding: 0;
-  margin: 0;
-  min-width: 100%;
-  min-height: 100%;
+  white-space: nowrap;
+  clip-path: inset(50%);
+  margin: -1px;
 }
 
 .upload-icon {
@@ -545,5 +539,178 @@ h2 {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* ===== Responsive Styles ===== */
+
+/* Medium screens (tablets, 768px and up) */
+@media (max-width: 992px) {
+  .main-content {
+    flex-direction: column;
+  }
+  
+  .tools-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: auto;
+    padding: 15px;
+    order: 2;
+  }
+  
+  .canvas-container {
+    width: 100%;
+    order: 1;
+    margin-bottom: 20px;
+  }
+  
+  .canvas-wrapper {
+    max-height: 60vh;
+  }
+  
+  .file-upload-section, 
+  .banner-section, 
+  .actions-section {
+    margin-bottom: 20px;
+  }
+  
+  .action-buttons-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .save-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Small screens (phones, 576px and up) */
+@media (max-width: 576px) {
+  .tools-panel {
+    padding: 10px;
+  }
+  
+  .canvas-wrapper {
+    max-height: 50vh;
+  }
+  
+  .action-buttons-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .save-buttons {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .banner-gallery {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  
+  .banner-item {
+    height: 60px;
+  }
+  
+  /* Make fullscreen mode work better on mobile */
+  .main-content.full-screen-mode {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    background-color: #fff;
+  }
+  
+  .full-screen-mode .canvas-wrapper {
+    max-height: 80vh;
+  }
+  
+  .full-screen-mode .tools-panel {
+    width: 100%;
+    padding: 8px;
+  }
+  
+  /* Show only essential tools in fullscreen mobile mode */
+  .full-screen-mode .file-upload-section,
+  .full-screen-mode .banner-section {
+    display: none;
+  }
+  
+  .full-screen-mode .actions-section {
+    margin-bottom: 10px;
+  }
+  
+  /* Better touch targets for mobile */
+  button {
+    min-height: 44px;
+  }
+  
+  .upload-container {
+    min-height: 80px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .main-content {
+    background-color: #111;
+    color: #f0f0f0;
+  }
+  
+  .tools-panel {
+    background-color: #222;
+    border-color: #333;
+  }
+  
+  .upload-container, 
+  .banner-item, 
+  .action-button,
+  .page-button {
+    background-color: #333;
+    border-color: #444;
+    color: #f0f0f0;
+  }
+  
+  .upload-container:hover, 
+  .banner-item:hover, 
+  .action-button:hover:not(.primary),
+  .page-button:hover:not(.active) {
+    background-color: #444;
+  }
+  
+  .canvas-wrapper {
+    background-color: #222;
+    border-color: #333;
+  }
+  
+  .action-button.primary {
+    background-color: #3851e0;
+  }
+  
+  .action-button.primary:hover {
+    background-color: #4a62e5;
+  }
+  
+  .canvas-placeholder {
+    color: #aaa;
+  }
+  
+  .loading-indicator,
+  .banner-loading,
+  .banner-success {
+    color: #f0f0f0;
+    background-color: rgba(34, 34, 34, 0.8);
+  }
+  
+  .spinner {
+    border-color: rgba(255, 255, 255, 0.2);
+    border-top-color: #3851e0;
+  }
+  
+  .drag-over {
+    background-color: #2d2d2d !important;
+    border-color: #3851e0 !important;
   }
 }

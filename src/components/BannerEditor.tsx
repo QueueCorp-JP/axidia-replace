@@ -3,7 +3,7 @@ import { fabric } from 'fabric';
 import { Canvas as FabricCanvas, Image as FabricImage, Object as FabricObject } from 'fabric/fabric-impl';
 import { AppState, CustomBanner } from '../types';
 import { isImageFile, isPdfFile, downloadFile } from '../utils/fileUtils';
-import { loadPdfDocument, renderPageToCanvas } from '../utils/pdfUtils';
+import { loadPdfDocument, renderPageToCanvas, clearPdfCache } from '../utils/pdfUtils';
 import './BannerEditor.css';
 
 const BannerEditor: React.FC = () => {
@@ -27,12 +27,81 @@ const BannerEditor: React.FC = () => {
   const toggleFullScreen = () => {
     setState(prev => ({ ...prev, isFullScreen: !prev.isFullScreen }));
     
-    // 全画面モード切替時にキャンバスをリサイズ
+    // Resize canvas after layout changes are applied
     setTimeout(() => {
       if (fabricCanvasRef.current && state.currentFile) {
-        fabricCanvasRef.current.renderAll();
+        resizeCanvasInFullScreenMode(!state.isFullScreen);
       }
     }, 100);
+  };
+
+  // Resizes the canvas properly to maximize the available space in fullscreen mode
+  const resizeCanvasInFullScreenMode = (isFullScreen: boolean) => {
+    if (!fabricCanvasRef.current || !canvasContainerRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
+    const container = canvasContainerRef.current;
+    
+    // Get the current canvas dimensions
+    const currentWidth = canvas.width || 800;
+    const currentHeight = canvas.height || 600;
+    const aspectRatio = currentWidth / currentHeight;
+    
+    if (isFullScreen) {
+      // In fullscreen mode, get the available size while respecting the aspect ratio
+      const containerWidth = container.clientWidth - 40; // Subtract padding/margin
+      const containerHeight = container.clientHeight - 40; // Subtract padding/margin
+      
+      let newWidth, newHeight;
+      
+      // Determine if width or height is the limiting factor
+      if (containerWidth / aspectRatio <= containerHeight) {
+        // Width is limiting
+        newWidth = containerWidth;
+        newHeight = containerWidth / aspectRatio;
+      } else {
+        // Height is limiting
+        newHeight = containerHeight;
+        newWidth = containerHeight * aspectRatio;
+      }
+      
+      // Apply the new dimensions
+      canvas.setWidth(newWidth);
+      canvas.setHeight(newHeight);
+      
+      // Scale all objects proportionally to the new size
+      const scaleX = newWidth / currentWidth;
+      const scaleY = newHeight / currentHeight;
+      
+      canvas.getObjects().forEach(obj => {
+        const currentScaleX = obj.scaleX || 1;
+        const currentScaleY = obj.scaleY || 1;
+        obj.set({
+          scaleX: currentScaleX * scaleX,
+          scaleY: currentScaleY * scaleY,
+          left: (obj.left || 0) * scaleX,
+          top: (obj.top || 0) * scaleY
+        });
+        obj.setCoords();
+      });
+      
+      // Also scale background image if it exists
+      const backgroundImage = canvas.backgroundImage;
+      if (backgroundImage) {
+        const bgScaleX = (backgroundImage as any).scaleX || 1;
+        const bgScaleY = (backgroundImage as any).scaleY || 1;
+        (backgroundImage as any).set({
+          scaleX: bgScaleX * scaleX,
+          scaleY: bgScaleY * scaleY
+        });
+      }
+    } else {
+      // When exiting fullscreen, restore the original size if needed
+      // This might depend on whether you want to keep the scaled version or go back to original
+      // For now, just render the canvas to update all objects
+    }
+    
+    canvas.renderAll();
   };
 
   // ESCキーで全画面モード解除
@@ -55,7 +124,7 @@ const BannerEditor: React.FC = () => {
     const handleResize = () => {
       if (state.isFullScreen && fabricCanvasRef.current && state.currentFile) {
         // リサイズ時にキャンバスを再描画
-        fabricCanvasRef.current.renderAll();
+        resizeCanvasInFullScreenMode(true);
       }
     };
 
@@ -109,6 +178,11 @@ const BannerEditor: React.FC = () => {
     try {
       // 既存のローディングインジケータをクリア
       document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
+      
+      // Clear the PDF cache when loading a new file
+      if (state.pdfDocument) {
+        clearPdfCache(`doc_${state.currentFile?.name || 'current'}`);
+      }
       
       resetCanvas();
       setState(prev => ({ ...prev, currentFile: file }));
@@ -701,6 +775,21 @@ const BannerEditor: React.FC = () => {
     }
   };
 
+  // Clean up resources when component unmounts
+  useEffect(() => {
+    return () => {
+      // Clear PDF cache when component unmounts
+      if (state.pdfDocument) {
+        clearPdfCache(`doc_${state.currentFile?.name || 'current'}`);
+      }
+      
+      // Dispose of Fabric canvas
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.dispose();
+      }
+    };
+  }, [state.pdfDocument, state.currentFile]);
+
   return (
     <main className={`main-content ${state.isFullScreen ? 'full-screen-mode' : ''}`}>
       <div className="tools-panel">
@@ -712,13 +801,20 @@ const BannerEditor: React.FC = () => {
             onDragEnter={(e) => e.preventDefault()}
             onDragLeave={handleDragLeave}
             onDrop={handleFileDrop}
-            onClick={() => document.getElementById('fileInput')?.click()}
+            onClick={(e) => {
+              // 直接inputをクリックした場合は重複して発火しないようにする
+              if (e.target === document.getElementById('fileInput')) {
+                return;
+              }
+              document.getElementById('fileInput')?.click();
+            }}
           >
             <input
               type="file"
               id="fileInput"
               accept=".jpg,.jpeg,.png,.pdf"
               onChange={(e) => e.target.files && e.target.files[0] && handleFileUpload(e.target.files[0])}
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
             />
             <div className="upload-icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
@@ -738,13 +834,20 @@ const BannerEditor: React.FC = () => {
             onDragEnter={(e) => e.preventDefault()}
             onDragLeave={handleDragLeave}
             onDrop={handleBannerDrop}
-            onClick={() => document.getElementById('bannerInput')?.click()}
+            onClick={(e) => {
+              // 直接inputをクリックした場合は重複して発火しないようにする
+              if (e.target === document.getElementById('bannerInput')) {
+                return;
+              }
+              document.getElementById('bannerInput')?.click();
+            }}
           >
             <input
               type="file"
               id="bannerInput"
               accept=".jpg,.jpeg,.png"
               onChange={(e) => e.target.files && e.target.files[0] && handleBannerUpload(e.target.files[0])}
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
             />
             <div className="upload-icon">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="48" height="48">
