@@ -6,7 +6,11 @@ import { isImageFile, isPdfFile, downloadFile } from '../utils/fileUtils';
 import { loadPdfDocument, renderPageToCanvas, clearPdfCache } from '../utils/pdfUtils';
 import './BannerEditor.css';
 
-const BannerEditor: React.FC = () => {
+interface BannerEditorProps {
+  onFilesSelected?: (files: File[]) => void;
+}
+
+const BannerEditor: React.FC<BannerEditorProps> = ({ onFilesSelected }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +198,9 @@ const BannerEditor: React.FC = () => {
           
           fabricCanvasRef.current = canvas;
 
+          // チュートリアル用のグローバル参照
+          (window as any).__fabricCanvas = canvas;
+
           // オブジェクト選択時のイベント
           canvas.on('selection:created', (e) => {
             if (e.selected && e.selected.length > 0) {
@@ -230,6 +237,11 @@ const BannerEditor: React.FC = () => {
   // ファイル処理関数
   const handleFileUpload = async (file: File) => {
     try {
+      // プログレスバー表示のためのコールバック呼び出し
+      if (onFilesSelected) {
+        onFilesSelected([file]);
+      }
+      
       // 既存のローディングインジケータをクリア
       document.querySelectorAll('.loading-indicator').forEach(el => el.remove());
       
@@ -324,6 +336,17 @@ const BannerEditor: React.FC = () => {
             resizeCanvasToFitImage(fabricImage);
             fabricCanvasRef.current.add(fabricImage);
             fabricCanvasRef.current.renderAll();
+            
+            // チュートリアル用の完了フラグ（即座に設定）
+            document.body.setAttribute('data-file-processed', 'true');
+            console.log('🎯 Tutorial: Image processing completed, flag set');
+            
+            // 追加の遅延フラグ（確実性向上）
+            setTimeout(() => {
+              document.body.setAttribute('data-file-processed', 'true');
+              console.log('🎯 Tutorial: Delayed flag confirmation for image');
+            }, 500);
+            
             resolve();
           } catch (imgError) {
             console.error('Image processing error:', imgError);
@@ -415,6 +438,16 @@ const BannerEditor: React.FC = () => {
       // 読み込み中の表示を削除
       clearTimeout(loadingTimeout);
       document.getElementById('pdf-loading-indicator')?.remove();
+      
+      // チュートリアル用の完了フラグ（即座に設定）
+      document.body.setAttribute('data-file-processed', 'true');
+      console.log('🎯 Tutorial: PDF processing completed, flag set');
+      
+      // 追加の遅延フラグ（確実性向上）
+      setTimeout(() => {
+        document.body.setAttribute('data-file-processed', 'true');
+        console.log('🎯 Tutorial: Delayed flag confirmation for PDF');
+      }, 1000);
     } catch (error) {
       // 読み込み中の表示を削除
       clearTimeout(loadingTimeout);
@@ -548,6 +581,16 @@ const BannerEditor: React.FC = () => {
           
           // 現在のページ番号を更新
           setState(prev => ({ ...prev, currentPage: pageNumber }));
+          
+          // チュートリアル用の完了フラグ（即座に設定）
+          document.body.setAttribute('data-file-processed', 'true');
+          console.log('🎯 Tutorial: PDF page rendered, flag set');
+          
+          // 追加の遅延フラグ（確実性向上）
+          setTimeout(() => {
+            document.body.setAttribute('data-file-processed', 'true');
+            console.log('🎯 Tutorial: Delayed flag confirmation for PDF page');
+          }, 500);
         } catch (error) {
           console.error('Error setting PDF background:', error);
           clearTimeout(loadingTimeout);
@@ -901,6 +944,11 @@ const BannerEditor: React.FC = () => {
       
       // PDFを保存
       pdf.save(newFilename);
+      
+      // チュートリアル用の完了フラグ
+      setTimeout(() => {
+        document.body.setAttribute('data-file-processed', 'true');
+      }, 1000);
     } catch (error) {
       console.error('PDF生成中にエラーが発生しました:', error);
       alert('PDF生成中にエラーが発生しました。画像として保存してください。');
@@ -927,8 +975,17 @@ const BannerEditor: React.FC = () => {
     const target = e.currentTarget;
     target.classList.remove('drag-over');
     
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      
+      // 複数ファイルの場合は、プログレスバー表示のためのコールバックを呼び出し
+      if (files.length > 1 && onFilesSelected) {
+        onFilesSelected(files);
+        // 複数ファイルの場合は最初のファイルのみを処理
+        handleFileUpload(files[0]);
+      } else if (files.length === 1) {
+        handleFileUpload(files[0]);
+      }
     }
   };
 
@@ -998,13 +1055,18 @@ const BannerEditor: React.FC = () => {
     };
   }, [state.pdfDocument, state.currentFile]);
 
+  // 状態が変更された時にグローバル参照を更新
+  useEffect(() => {
+    (window as any).__appState = state;
+  }, [state]);
+
   return (
     <main className={`main-content ${state.isFullScreen ? 'full-screen-mode' : ''}`}>
       <div className="tools-panel">
         <div className="file-upload-section">
           <h2>画像/PDFアップロード</h2>
           <div
-            className="upload-container"
+            className="upload-container upload-area"
             onDragOver={handleDragOver}
             onDragEnter={(e) => e.preventDefault()}
             onDragLeave={handleDragLeave}
@@ -1021,7 +1083,19 @@ const BannerEditor: React.FC = () => {
               type="file"
               id="fileInput"
               accept=".jpg,.jpeg,.png,.pdf"
-              onChange={(e) => e.target.files && e.target.files[0] && handleFileUpload(e.target.files[0])}
+              multiple
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  const files = Array.from(e.target.files);
+                  if (files.length > 1 && onFilesSelected) {
+                    onFilesSelected(files);
+                    // 複数ファイルの場合は最初のファイルのみを処理
+                    handleFileUpload(files[0]);
+                  } else if (files.length === 1) {
+                    handleFileUpload(files[0]);
+                  }
+                }
+              }}
               style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
             />
             <div className="upload-icon">
@@ -1030,7 +1104,7 @@ const BannerEditor: React.FC = () => {
                 <path d="M12 12.586l4.243 4.242-1.415 1.415L13 16.415V22h-2v-5.587l-1.828 1.83-1.415-1.415L12 12.586zM12 2a7.001 7.001 0 0 1 6.954 6.194 5.5 5.5 0 0 1-.953 10.784v-2.014a3.5 3.5 0 1 0-1.112-6.91 5 5 0 1 0-9.777 0 3.5 3.5 0 0 0-1.292 6.88l.18.03v2.014a5.5 5.5 0 0 1-.954-10.784A7 7 0 0 1 12 2z" fill="currentColor"/>
               </svg>
             </div>
-            <p>ファイルをドラッグ＆ドロップするか、クリックして選択</p>
+            <p>ファイルをドラッグ＆ドロップするか、クリックして選択（複数選択可能）</p>
           </div>
         </div>
         
@@ -1067,27 +1141,34 @@ const BannerEditor: React.FC = () => {
           </div>
           
           <div className="banner-gallery">
-            {state.customBanners.map((banner) => (
-              <div 
-                key={banner.id} 
-                className="banner-item" 
-                onClick={() => {
-                  if (!state.currentFile) {
-                    alert('はじめに不動産物件のファイルをアップロードしてください。');
-                    return;
-                  }
-                  addBannerToCanvas(banner);
-                }}
-              >
-                <img src={banner.src} alt={banner.filename} />
+            {state.customBanners.length > 0 ? (
+              state.customBanners.map((banner) => (
+                <div 
+                  key={banner.id} 
+                  className="banner-item" 
+                  onClick={() => {
+                    if (!state.currentFile) {
+                      alert('はじめに不動産物件のファイルをアップロードしてください。');
+                      return;
+                    }
+                    addBannerToCanvas(banner);
+                  }}
+                >
+                  <img src={banner.src} alt={banner.filename} />
+                </div>
+              ))
+            ) : (
+              <div className="banner-gallery-placeholder">
+                <p>アップロードしたバナーがここに表示されます</p>
+                <small>バナー画像をアップロードして使い始めましょう</small>
               </div>
-            ))}
+            )}
           </div>
         </div>
         
         <div className="actions-section">
           <h2>操作</h2>
-          <div className="action-buttons-grid">
+          <div className="action-buttons-grid toolbar">
             <button
               className={`action-button ${state.isSelectionMode ? 'primary' : ''}`}
               onClick={toggleSelectionMode}
@@ -1152,7 +1233,7 @@ const BannerEditor: React.FC = () => {
             </button>
           </div>
           
-          <div className="save-buttons">
+          <div className="save-buttons download-button">
             <button
               className="action-button primary"
               onClick={saveAsImage}

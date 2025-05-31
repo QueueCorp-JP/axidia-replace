@@ -714,3 +714,32 @@ h2 {
     border-color: #3851e0 !important;
   }
 }
+
+.banner-gallery-placeholder {
+  padding: 40px 20px;
+  text-align: center;
+  color: #6B7280;
+  border: 2px dashed #D1D5DB;
+  border-radius: 8px;
+  background-color: #F9FAFB;
+}
+
+.banner-gallery-placeholder p {
+  margin: 0 0 8px 0;
+  font-weight: 500;
+}
+
+.banner-gallery-placeholder small {
+  color: #9CA3AF;
+  font-size: 12px;
+}
+
+/* Pulse animation for welcome message */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
