@@ -247,8 +247,8 @@ const SpotlightTutorial: React.FC<SpotlightTutorialProps> = ({ onComplete }) => 
       observerRef.current.disconnect();
     }
     
-    const observer = new MutationObserver((mutations) => {
-      checkForStepCompletion(step, mutations);
+    const observer = new MutationObserver(() => {
+      checkForStepCompletion(step);
     });
     
     // DOM全体を監視
@@ -266,7 +266,7 @@ const SpotlightTutorial: React.FC<SpotlightTutorialProps> = ({ onComplete }) => 
   };
 
   // ステップ完了チェック
-  const checkForStepCompletion = (step: TutorialStep, mutations?: MutationRecord[]) => {
+  const checkForStepCompletion = (step: TutorialStep) => {
     if (actionCompleted) return;
     
     let completed = false;
@@ -357,11 +357,14 @@ const SpotlightTutorial: React.FC<SpotlightTutorialProps> = ({ onComplete }) => 
           // 条件C: ローディングが完了し、アプリ状態にファイルがある
           stateComplete: noLoadingIndicators && canvasExists && hasCurrentFile,
           
-          // 条件D: 強制的に5秒経過後（最後の手段）
+          // 条件D: Fabric要素が検出された（DOM ベースのフォールバック）
+          fabricElementsDetected: noLoadingIndicators && canvasExists && hasFabricElements,
+          
+          // 条件E: 強制的に5秒経過後（最後の手段）
           timeElapsed: false // これは別途タイマーで管理
         };
         
-        completed = conditions.flagComplete || conditions.contentComplete || conditions.stateComplete;
+        completed = conditions.flagComplete || conditions.contentComplete || conditions.stateComplete || conditions.fabricElementsDetected;
         
         console.log('  ✅ Completion conditions:', conditions);
         console.log('  🎯 Final result:', completed);
@@ -378,7 +381,8 @@ const SpotlightTutorial: React.FC<SpotlightTutorialProps> = ({ onComplete }) => 
             needsNoLoading: !noLoadingIndicators,
             needsCanvas: !canvasExists,
             needsContent: !canvasHasContent && !hasBackgroundImage,
-            needsFile: !hasCurrentFile
+            needsFile: !hasCurrentFile,
+            needsFabricElements: !hasFabricElements
           });
           
           // 5秒経過後の強制完了チェック用タイマー設定
